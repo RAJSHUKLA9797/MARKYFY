@@ -1,7 +1,8 @@
 let drawing = false;
 let penEnabled = false;
-let currentTool = "pen";
-let toolbarVisible = true;
+let currentTool = null;
+let toolbarVisible = false;
+let textMode = false;
 
 // Create the canvas and context
 const canvas = document.createElement("canvas");
@@ -24,8 +25,6 @@ function getToolColor(tool) {
       return "gray";
     case "highlighter":
       return "yellow";
-    case "eraser":
-      return "white";
     default:
       return "black";
   }
@@ -53,9 +52,51 @@ function clearCanvas() {
   localStorage.removeItem("annotations");
 }
 
-// Redefine canvas event listeners to ensure proper removal
+// Add text to the canvas
+function addTextToCanvas(text, x, y) {
+  ctx.font = "16px Arial";
+  ctx.fillStyle = "black";
+  ctx.fillText(text, x, y);
+}
+
+// Mouse click handler for text tool
+function handleMouseClick(e) {
+  if (textMode) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.style.color = "black";
+    input.style.position = "absolute";
+    input.style.top = `${e.clientY + window.scrollY}px`;
+    input.style.left = `${e.clientX}px`;
+    input.style.font = "16px Arial";
+    input.style.border = "1px solid #ccc";
+    input.style.padding = "2px";
+    input.style.zIndex = "9999";
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        addTextToCanvas(input.value, e.clientX, e.clientY + 16); // Add text to canvas
+        document.body.removeChild(input); // Remove input box
+        saveAnnotations(); // Save annotations
+      }
+    });
+
+    input.addEventListener("blur", () => {
+      if (input.value) {
+        addTextToCanvas(input.value, e.clientX, e.clientY + 16); // Add text to canvas
+      }
+      document.body.removeChild(input); // Remove input box
+      saveAnnotations(); // Save annotations
+    });
+
+    document.body.appendChild(input);
+    input.focus();
+  }
+}
+
+// Canvas event listeners for drawing tools
 function handleMouseDown(e) {
-  if (penEnabled && currentTool !== "clear") {
+  if (penEnabled && currentTool) {
     drawing = true;
     ctx.beginPath();
     ctx.moveTo(e.clientX, e.clientY + window.scrollY); // Account for page scroll
@@ -65,21 +106,32 @@ function handleMouseDown(e) {
 function handleMouseMove(e) {
   if (drawing) {
     ctx.lineTo(e.clientX, e.clientY + window.scrollY); // Account for page scroll
-    ctx.strokeStyle = getToolColor(currentTool);
-    ctx.lineWidth = getToolWidth(currentTool);
+
+    if (currentTool === "eraser") {
+      ctx.globalCompositeOperation = "destination-out"; // Enable erasing
+      ctx.lineWidth = getToolWidth("eraser");
+    } else {
+      ctx.globalCompositeOperation = "source-over"; // Default drawing mode
+      ctx.strokeStyle = getToolColor(currentTool);
+      ctx.lineWidth = getToolWidth(currentTool);
+    }
     ctx.stroke();
   }
 }
 
 function handleMouseUp() {
-  drawing = false;
-  saveAnnotations();
+  if (drawing) {
+    drawing = false;
+    ctx.globalCompositeOperation = "source-over"; // Reset drawing mode
+    saveAnnotations();
+  }
 }
 
-// Attach event listeners to the canvas
+// Attach event listeners
 canvas.addEventListener("mousedown", handleMouseDown);
 canvas.addEventListener("mousemove", handleMouseMove);
 canvas.addEventListener("mouseup", handleMouseUp);
+document.addEventListener("mousedown", handleMouseClick); // Listen for clicks on the webpage
 
 // Function to save annotations
 function saveAnnotations() {
@@ -113,7 +165,7 @@ toolbar.style.borderRadius = "5px";
 toolbar.style.boxShadow = "0 4px 8px rgba(0, 0, 0, 0.1)";
 
 // Add tool buttons
-const tools = ["Pen", "Pencil", "Highlighter", "Eraser", "Clear"];
+const tools = ["Pen", "Pencil", "Highlighter", "Eraser", "Clear", "Text"];
 tools.forEach((tool) => {
   const button = document.createElement("button");
   button.innerText = tool;
@@ -122,21 +174,9 @@ tools.forEach((tool) => {
   toolbar.appendChild(button);
 });
 
-// Add toggle pen button
-const togglePenButton = document.createElement("button");
-togglePenButton.innerText = "Toggle Pen";
-togglePenButton.style.margin = "5px";
-togglePenButton.addEventListener("click", togglePen);
-toolbar.appendChild(togglePenButton);
-
-// // Add load webpage button
-// const loadWebpageButton = document.createElement("button");
-// loadWebpageButton.innerText = "Load Webpage";
-// loadWebpageButton.style.margin = "5px";
-// toolbar.appendChild(loadWebpageButton);
-
 // Append the toolbar to the webpage
 document.body.appendChild(toolbar);
+toolbar.style.display = toolbarVisible ? "block" : "none";
 
 // Add a button to toggle the toolbar visibility
 const toggleToolbarButton = document.createElement("button");
@@ -154,20 +194,30 @@ function toggleToolbar() {
   toolbar.style.display = toolbarVisible ? "block" : "none";
 }
 
-// Function to toggle the pen
-function togglePen() {
-  penEnabled = !penEnabled;
-  canvas.style.pointerEvents = penEnabled ? "auto" : "none";
-  alert(`Pen is now ${penEnabled ? "enabled" : "disabled"}`);
-}
-
 // Function to set the active tool
 function setActiveTool(tool) {
-  currentTool = tool;
+  textMode = tool === "text";
+  penEnabled = !textMode;
+
   if (tool === "clear") {
     clearCanvas();
+  } else {
+    currentTool = tool;
   }
+
+  // Highlight the selected tool button
+  const buttons = toolbar.querySelectorAll("button");
+  buttons.forEach((button) => {
+    if (button.innerText.toLowerCase() === tool) {
+      button.style.backgroundColor = "#007bff"; // Highlight color
+      button.style.color = "#fff"; // Change text color for better contrast
+    } else {
+      button.style.backgroundColor = ""; // Reset to default
+      button.style.color = ""; // Reset text color
+    }
+  });
 }
+
 
 // Load annotations when the page loads
 window.onload = loadAnnotations;
